@@ -1,0 +1,564 @@
+"""Sensor platform for Electricity Price Forecast."""
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any
+
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CURRENCY_EURO
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+from .const import (
+    ATTR_AVERAGE_TODAY,
+    ATTR_CHEAPEST_HOURS,
+    ATTR_EXPENSIVE_HOURS,
+    ATTR_FORECAST_24H,
+    ATTR_FORECAST_7D,
+    ATTR_MAX_TODAY,
+    ATTR_MIN_TODAY,
+    ATTR_RECOMMENDATION,
+    DOMAIN,
+)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up the sensor platform."""
+    coordinator = hass.data[DOMAIN][config_entry.entry_id]["coordinator"]
+    api = hass.data[DOMAIN][config_entry.entry_id]["api"]
+
+    sensors = [
+        CurrentPriceSensor(coordinator, api),
+        NextHourPriceSensor(coordinator, api),
+        AveragePriceTodaySensor(coordinator, api),
+        CheapestHourTodaySensor(coordinator, api),
+        ExpensiveHourTodaySensor(coordinator, api),
+        PriceTrendSensor(coordinator, api),
+        RecommendationSensor(coordinator, api),
+        ForecastSensor(coordinator, api),
+        SevenDayForecastSensor(coordinator, api),
+    ]
+
+    async_add_entities(sensors)
+
+
+class ElectricityPriceSensorBase(CoordinatorEntity, SensorEntity):
+    """Base class for Electricity Price sensors."""
+
+    def __init__(self, coordinator, api):
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self.api = api
+        self._attr_has_entity_name = True
+
+    @property
+    def device_info(self):
+        """Return device information."""
+        return {
+            "identifiers": {(DOMAIN, self.api.region_id)},
+            "name": f"Electricity Forecast {self.api.region_id}",
+            "manufacturer": "Electricity Price Forecast",
+            "model": f"Region {self.api.region_id}",
+        }
+
+
+class CurrentPriceSensor(ElectricityPriceSensorBase):
+    """Sensor for current electricity price."""
+
+    _attr_name = "Current Price"
+    _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/MWh"
+    _attr_device_class = SensorDeviceClass.MONETARY
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:currency-eur"
+
+    @property
+    def unique_id(self):
+        """Return unique ID."""
+        return f"{self.api.region_id}_current_price"
+
+    @property
+    def native_value(self):
+        """Return the current price."""
+        if not self.coordinator.data:
+            return None
+
+        current = self.coordinator.data.get("current_price")
+        if current:
+            return round(current["price"], 2)
+        return None
+
+    @property
+    def extra_state_attributes(self):
+        """Return additional attributes."""
+        if not self.coordinator.data:
+            return {}
+
+        current = self.coordinator.data.get("current_price")
+        if current:
+            return {
+                "last_updated": current["timestamp"],
+                "region": self.api.region_id,
+            }
+        return {}
+
+
+class NextHourPriceSensor(ElectricityPriceSensorBase):
+    """Sensor for next hour electricity price."""
+
+    _attr_name = "Next Hour Price"
+    _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/MWh"
+    _attr_device_class = SensorDeviceClass.MONETARY
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:clock-fast"
+
+    @property
+    def unique_id(self):
+        """Return unique ID."""
+        return f"{self.api.region_id}_next_hour_price"
+
+    @property
+    def native_value(self):
+        """Return the next hour price."""
+        if not self.coordinator.data:
+            return None
+
+        predictions = self.coordinator.data.get("predictions_24h", [])
+        if predictions:
+            # Get the next hour prediction
+            next_pred = predictions[0]
+            return round(next_pred["predicted_price"], 2)
+        return None
+
+    @property
+    def extra_state_attributes(self):
+        """Return additional attributes."""
+        if not self.coordinator.data:
+            return {}
+
+        predictions = self.coordinator.data.get("predictions_24h", [])
+        if predictions:
+            next_pred = predictions[0]
+            return {
+                "forecast_time": next_pred["timestamp"],
+                "confidence_lower": round(next_pred.get("confidence_lower", 0), 2),
+                "confidence_upper": round(next_pred.get("confidence_upper", 0), 2),
+                "region": self.api.region_id,
+            }
+        return {}
+
+
+class AveragePriceTodaySensor(ElectricityPriceSensorBase):
+    """Sensor for average price today."""
+
+    _attr_name = "Average Price Today"
+    _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/MWh"
+    _attr_device_class = SensorDeviceClass.MONETARY
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:chart-line"
+
+    @property
+    def unique_id(self):
+        """Return unique ID."""
+        return f"{self.api.region_id}_avg_price_today"
+
+    @property
+    def native_value(self):
+        """Return the average price today."""
+        if not self.coordinator.data:
+            return None
+
+        predictions = self.coordinator.data.get("predictions_24h", [])
+        if not predictions:
+            return None
+
+        # Filter today's predictions
+        now = datetime.now()
+        today_end = now.replace(hour=23, minute=59, second=59)
+
+        today_prices = [
+            p["predicted_price"] for p in predictions
+            if now <= datetime.fromisoformat(p["timestamp"].replace("Z", "+00:00")) <= today_end
+        ]
+
+        if today_prices:
+            return round(sum(today_prices) / len(today_prices), 2)
+        return None
+
+    @property
+    def extra_state_attributes(self):
+        """Return additional attributes."""
+        if not self.coordinator.data:
+            return {}
+
+        predictions = self.coordinator.data.get("predictions_24h", [])
+        if not predictions:
+            return {}
+
+        now = datetime.now()
+        today_end = now.replace(hour=23, minute=59, second=59)
+
+        today_prices = [
+            p["predicted_price"] for p in predictions
+            if now <= datetime.fromisoformat(p["timestamp"].replace("Z", "+00:00")) <= today_end
+        ]
+
+        if today_prices:
+            return {
+                ATTR_MIN_TODAY: round(min(today_prices), 2),
+                ATTR_MAX_TODAY: round(max(today_prices), 2),
+                "price_spread": round(max(today_prices) - min(today_prices), 2),
+                "data_points": len(today_prices),
+            }
+        return {}
+
+
+class CheapestHourTodaySensor(ElectricityPriceSensorBase):
+    """Sensor for cheapest hour today."""
+
+    _attr_name = "Cheapest Hour Today"
+    _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/MWh"
+    _attr_device_class = SensorDeviceClass.MONETARY
+    _attr_icon = "mdi:arrow-down-bold"
+
+    @property
+    def unique_id(self):
+        """Return unique ID."""
+        return f"{self.api.region_id}_cheapest_hour"
+
+    @property
+    def native_value(self):
+        """Return the cheapest hour price."""
+        if not self.coordinator.data:
+            return None
+
+        predictions = self.coordinator.data.get("predictions_24h", [])
+        cheapest = self.api.get_cheapest_hours(predictions, 1)
+
+        if cheapest:
+            return round(cheapest[0]["predicted_price"], 2)
+        return None
+
+    @property
+    def extra_state_attributes(self):
+        """Return additional attributes."""
+        if not self.coordinator.data:
+            return {}
+
+        predictions = self.coordinator.data.get("predictions_24h", [])
+        cheapest = self.api.get_cheapest_hours(predictions, 3)
+
+        if cheapest:
+            return {
+                "cheapest_time": cheapest[0]["timestamp"],
+                ATTR_CHEAPEST_HOURS: [
+                    {
+                        "time": p["timestamp"],
+                        "price": round(p["predicted_price"], 2)
+                    }
+                    for p in cheapest
+                ],
+            }
+        return {}
+
+
+class ExpensiveHourTodaySensor(ElectricityPriceSensorBase):
+    """Sensor for most expensive hour today."""
+
+    _attr_name = "Most Expensive Hour Today"
+    _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/MWh"
+    _attr_device_class = SensorDeviceClass.MONETARY
+    _attr_icon = "mdi:arrow-up-bold"
+
+    @property
+    def unique_id(self):
+        """Return unique ID."""
+        return f"{self.api.region_id}_expensive_hour"
+
+    @property
+    def native_value(self):
+        """Return the most expensive hour price."""
+        if not self.coordinator.data:
+            return None
+
+        predictions = self.coordinator.data.get("predictions_24h", [])
+        expensive = self.api.get_expensive_hours(predictions, 1)
+
+        if expensive:
+            return round(expensive[0]["predicted_price"], 2)
+        return None
+
+    @property
+    def extra_state_attributes(self):
+        """Return additional attributes."""
+        if not self.coordinator.data:
+            return {}
+
+        predictions = self.coordinator.data.get("predictions_24h", [])
+        expensive = self.api.get_expensive_hours(predictions, 3)
+
+        if expensive:
+            return {
+                "expensive_time": expensive[0]["timestamp"],
+                ATTR_EXPENSIVE_HOURS: [
+                    {
+                        "time": p["timestamp"],
+                        "price": round(p["predicted_price"], 2)
+                    }
+                    for p in expensive
+                ],
+            }
+        return {}
+
+
+class PriceTrendSensor(ElectricityPriceSensorBase):
+    """Sensor for price trend."""
+
+    _attr_name = "Price Trend"
+    _attr_icon = "mdi:trending-up"
+
+    @property
+    def unique_id(self):
+        """Return unique ID."""
+        return f"{self.api.region_id}_price_trend"
+
+    @property
+    def native_value(self):
+        """Return the price trend."""
+        if not self.coordinator.data:
+            return None
+
+        current = self.coordinator.data.get("current_price")
+        predictions = self.coordinator.data.get("predictions_24h", [])
+
+        if not current or not predictions:
+            return "unknown"
+
+        current_price = current["price"]
+        next_3h_prices = [p["predicted_price"] for p in predictions[:3]]
+
+        if not next_3h_prices:
+            return "unknown"
+
+        avg_next_3h = sum(next_3h_prices) / len(next_3h_prices)
+
+        if avg_next_3h > current_price * 1.05:
+            return "rising"
+        elif avg_next_3h < current_price * 0.95:
+            return "falling"
+        else:
+            return "stable"
+
+    @property
+    def extra_state_attributes(self):
+        """Return additional attributes."""
+        if not self.coordinator.data:
+            return {}
+
+        current = self.coordinator.data.get("current_price")
+        predictions = self.coordinator.data.get("predictions_24h", [])
+
+        if not current or not predictions:
+            return {}
+
+        current_price = current["price"]
+        next_3h_prices = [p["predicted_price"] for p in predictions[:3]]
+
+        if next_3h_prices:
+            avg_next_3h = sum(next_3h_prices) / len(next_3h_prices)
+            change = ((avg_next_3h - current_price) / current_price) * 100
+
+            return {
+                "current_price": round(current_price, 2),
+                "avg_next_3h": round(avg_next_3h, 2),
+                "change_percent": round(change, 1),
+            }
+        return {}
+
+
+class RecommendationSensor(ElectricityPriceSensorBase):
+    """Sensor for action recommendation."""
+
+    _attr_name = "Recommendation"
+    _attr_icon = "mdi:lightbulb"
+
+    @property
+    def unique_id(self):
+        """Return unique ID."""
+        return f"{self.api.region_id}_recommendation"
+
+    @property
+    def native_value(self):
+        """Return the recommendation."""
+        if not self.coordinator.data:
+            return None
+
+        current = self.coordinator.data.get("current_price")
+        predictions = self.coordinator.data.get("predictions_24h", [])
+
+        if not current or not predictions:
+            return "unknown"
+
+        return self.api.get_recommendation(current["price"], predictions)
+
+    @property
+    def extra_state_attributes(self):
+        """Return additional attributes."""
+        recommendations = {
+            "charge": "Good time to charge batteries or run appliances",
+            "discharge": "Good time to use stored energy or sell to grid",
+            "neutral_cheap": "Price below average but not optimal",
+            "neutral_expensive": "Price above average, consider waiting",
+            "unknown": "Insufficient data for recommendation",
+        }
+
+        state = self.native_value
+        if state:
+            return {
+                "description": recommendations.get(state, "Unknown"),
+                "icon_suggestion": self._get_icon_for_recommendation(state),
+            }
+        return {}
+
+    def _get_icon_for_recommendation(self, recommendation: str) -> str:
+        """Get icon for recommendation."""
+        icons = {
+            "charge": "mdi:battery-charging",
+            "discharge": "mdi:battery-arrow-up",
+            "neutral_cheap": "mdi:battery-50",
+            "neutral_expensive": "mdi:battery-outline",
+            "unknown": "mdi:help-circle",
+        }
+        return icons.get(recommendation, "mdi:help-circle")
+
+
+class ForecastSensor(ElectricityPriceSensorBase):
+    """Sensor with full forecast as attributes."""
+
+    _attr_name = "Forecast"
+    _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/MWh"
+    _attr_device_class = SensorDeviceClass.MONETARY
+    _attr_icon = "mdi:chart-timeline-variant"
+
+    @property
+    def unique_id(self):
+        """Return unique ID."""
+        return f"{self.api.region_id}_forecast"
+
+    @property
+    def native_value(self):
+        """Return the current/next hour price."""
+        if not self.coordinator.data:
+            return None
+
+        predictions = self.coordinator.data.get("predictions_24h", [])
+        if predictions:
+            return round(predictions[0]["predicted_price"], 2)
+        return None
+
+    @property
+    def extra_state_attributes(self):
+        """Return forecast data as attributes."""
+        if not self.coordinator.data:
+            return {}
+
+        predictions_24h = self.coordinator.data.get("predictions_24h", [])
+        predictions_7d = self.coordinator.data.get("predictions_7d", [])
+
+        return {
+            ATTR_FORECAST_24H: [
+                {
+                    "time": p["timestamp"],
+                    "price": round(p["predicted_price"], 2),
+                    "conf_lower": round(p.get("confidence_lower", 0), 2),
+                    "conf_upper": round(p.get("confidence_upper", 0), 2),
+                }
+                for p in predictions_24h
+            ],
+            ATTR_FORECAST_7D: [
+                {
+                    "time": p["timestamp"],
+                    "price": round(p["predicted_price"], 2),
+                }
+                for p in predictions_7d
+            ],
+            "forecast_24h_count": len(predictions_24h),
+            "forecast_7d_count": len(predictions_7d),
+        }
+
+
+class SevenDayForecastSensor(ElectricityPriceSensorBase):
+    """Dedicated sensor for 7-day price forecast."""
+
+    _attr_name = "7 Day Price Forecast"
+    _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/MWh"
+    _attr_device_class = SensorDeviceClass.MONETARY
+    _attr_icon = "mdi:calendar-week"
+
+    @property
+    def unique_id(self):
+        """Return unique ID."""
+        return f"{self.api.region_id}_7day_forecast"
+
+    @property
+    def native_value(self):
+        """Return the average price for the next 7 days."""
+        if not self.coordinator.data:
+            return None
+
+        predictions_7d = self.coordinator.data.get("predictions_7d", [])
+        if predictions_7d:
+            prices = [p["predicted_price"] for p in predictions_7d]
+            return round(sum(prices) / len(prices), 2)
+        return None
+
+    @property
+    def extra_state_attributes(self):
+        """Return 7-day forecast data as attributes."""
+        if not self.coordinator.data:
+            return {}
+
+        predictions_7d = self.coordinator.data.get("predictions_7d", [])
+
+        if not predictions_7d:
+            return {}
+
+        prices = [p["predicted_price"] for p in predictions_7d]
+
+        # Calculate daily averages
+        daily_averages = []
+        for i in range(0, len(predictions_7d), 24):
+            day_data = predictions_7d[i:i+24]
+            if day_data:
+                day_prices = [p["predicted_price"] for p in day_data]
+                daily_averages.append({
+                    "date": day_data[0]["timestamp"][:10],
+                    "avg_price": round(sum(day_prices) / len(day_prices), 2),
+                    "min_price": round(min(day_prices), 2),
+                    "max_price": round(max(day_prices), 2),
+                })
+
+        return {
+            "forecast_7d_full": [
+                {
+                    "time": p["timestamp"],
+                    "price": round(p["predicted_price"], 2),
+                }
+                for p in predictions_7d
+            ],
+            "daily_averages": daily_averages,
+            "min_price_7d": round(min(prices), 2),
+            "max_price_7d": round(max(prices), 2),
+            "avg_price_7d": round(sum(prices) / len(prices), 2),
+            "total_hours": len(predictions_7d),
+            "region": self.api.region_id,
+        }

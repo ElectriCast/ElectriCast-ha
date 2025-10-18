@@ -1,0 +1,42 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configure Electricity Price Forecast",
+        "description": "Enter the URL where your Electricity Forecast API is running. Example: http://192.168.1.100:8000 or http://localhost:8000",
+        "data": {
+          "api_url": "API Root URL",
+          "region_id": "Region"
+        },
+        "data_description": {
+          "api_url": "The root URL of your Electricity Forecast API server (without trailing slash). Example: http://192.168.1.100:8000",
+          "region_id": "Select the German region for electricity price forecasts"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the API. Please verify:\n• API URL is correct (e.g., http://192.168.1.100:8000)\n• API service is running\n• Home Assistant can reach the API server\n• No firewall blocking port 8000",
+      "invalid_url": "Invalid URL format. Please use format: http://hostname:port",
+      "no_data": "API is reachable but no prediction data is available. Please run the prediction generator first."
+    },
+    "abort": {
+      "already_configured": "This API and region combination is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Update Electricity Price Forecast Settings",
+        "description": "Update your API URL or region settings.",
+        "data": {
+          "api_url": "API Root URL",
+          "region_id": "Region"
+        },
+        "data_description": {
+          "api_url": "The root URL of your Electricity Forecast API server",
+          "region_id": "Select the German region for electricity price forecasts"
+        }
+      }
+    }
+  }
+}

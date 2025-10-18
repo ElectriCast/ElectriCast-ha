@@ -1,0 +1,29 @@
+get_cheapest_hours:
+  name: Get Cheapest Hours
+  description: Find the cheapest hours in the forecast
+  fields:
+    hours:
+      name: Number of Hours
+      description: How many of the cheapest hours to return
+      required: false
+      default: 3
+      selector:
+        number:
+          min: 1
+          max: 24
+          mode: box
+
+get_expensive_hours:
+  name: Get Most Expensive Hours
+  description: Find the most expensive hours in the forecast
+  fields:
+    hours:
+      name: Number of Hours
+      description: How many of the most expensive hours to return
+      required: false
+      default: 3
+      selector:
+        number:
+          min: 1
+          max: 24
+          mode: box
