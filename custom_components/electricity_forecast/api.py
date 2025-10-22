@@ -75,8 +75,9 @@ class ElectricityForecastAPI:
     def get_cheapest_hours(self, predictions: list[dict], hours: int = 3) -> list[dict]:
         """Get N cheapest hours from predictions."""
         # Filter to only today's predictions
-        now = datetime.now()
-        today_end = now.replace(hour=23, minute=59, second=59)
+        from datetime import timezone
+        now = datetime.now(timezone.utc)
+        today_end = now.replace(hour=23, minute=59, second=59, microsecond=0)
 
         today_predictions = [
             p for p in predictions
@@ -90,8 +91,9 @@ class ElectricityForecastAPI:
     def get_expensive_hours(self, predictions: list[dict], hours: int = 3) -> list[dict]:
         """Get N most expensive hours from predictions."""
         # Filter to only today's predictions
-        now = datetime.now()
-        today_end = now.replace(hour=23, minute=59, second=59)
+        from datetime import timezone
+        now = datetime.now(timezone.utc)
+        today_end = now.replace(hour=23, minute=59, second=59, microsecond=0)
 
         today_predictions = [
             p for p in predictions
@@ -108,8 +110,9 @@ class ElectricityForecastAPI:
             return "unknown"
 
         # Get today's predictions
-        now = datetime.now()
-        today_end = now.replace(hour=23, minute=59, second=59)
+        from datetime import timezone
+        now = datetime.now(timezone.utc)
+        today_end = now.replace(hour=23, minute=59, second=59, microsecond=0)
 
         today_predictions = [
             p["predicted_price"] for p in predictions
