@@ -1,7 +1,7 @@
 """Sensor platform for Electricity Price Forecast."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -47,6 +47,10 @@ async def async_setup_entry(
         RecommendationSensor(coordinator, api),
         ForecastSensor(coordinator, api),
         SevenDayForecastSensor(coordinator, api),
+        CheapestDayNext7DSensor(coordinator, api),
+        MostExpensiveDayNext7DSensor(coordinator, api),
+        TomorrowVsTodaySensor(coordinator, api),
+        WeeklyTrendSensor(coordinator, api),
     ]
 
     async_add_entities(sensors)
@@ -79,7 +83,8 @@ class CurrentPriceSensor(ElectricityPriceSensorBase):
     _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/kWh"
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_icon = "mdi:currency-eur"
+    _attr_icon = "mdi:flash"
+    _attr_suggested_display_precision = 5
 
     @property
     def unique_id(self):
@@ -151,7 +156,8 @@ class NextHourPriceSensor(ElectricityPriceSensorBase):
     _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/kWh"
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_icon = "mdi:clock-fast"
+    _attr_icon = "mdi:clock-outline"
+    _attr_suggested_display_precision = 5
 
     @property
     def unique_id(self):
@@ -197,7 +203,8 @@ class AveragePriceTodaySensor(ElectricityPriceSensorBase):
     _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/kWh"
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_icon = "mdi:chart-line"
+    _attr_icon = "mdi:chart-bell-curve"
+    _attr_suggested_display_precision = 5
 
     @property
     def unique_id(self):
@@ -262,7 +269,8 @@ class CheapestHourTodaySensor(ElectricityPriceSensorBase):
     _attr_name = "Cheapest Hour Today"
     _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/kWh"
     _attr_device_class = SensorDeviceClass.MONETARY
-    _attr_icon = "mdi:arrow-down-bold"
+    _attr_icon = "mdi:currency-eur-off"
+    _attr_suggested_display_precision = 5
 
     @property
     def unique_id(self):
@@ -611,4 +619,317 @@ class SevenDayForecastSensor(ElectricityPriceSensorBase):
             "avg_price_7d": round(sum(prices) / len(prices) / 1000, 5),
             "total_hours": len(predictions_7d),
             "region": self.api.region_id,
+        }
+
+
+class CheapestDayNext7DSensor(ElectricityPriceSensorBase):
+    """Sensor showing the cheapest day in next 7 days."""
+
+    _attr_name = "Cheapest Day (7d)"
+    _attr_icon = "mdi:calendar-star"
+
+    @property
+    def unique_id(self):
+        """Return unique ID."""
+        return f"{self.api.region_id}_cheapest_day_7d"
+
+    @property
+    def native_value(self):
+        """Return the date of the cheapest day."""
+        if not self.coordinator.data:
+            return None
+
+        predictions_7d = self.coordinator.data.get("predictions_7d", [])
+        if not predictions_7d:
+            return None
+
+        # Calculate daily averages
+        daily_data = {}
+        for pred in predictions_7d:
+            date = pred["timestamp"][:10]  # Get date part (YYYY-MM-DD)
+            if date not in daily_data:
+                daily_data[date] = []
+            daily_data[date].append(pred["predicted_price"])
+
+        # Find cheapest day
+        daily_averages = {date: sum(prices) / len(prices) for date, prices in daily_data.items()}
+        if not daily_averages:
+            return None
+
+        cheapest_date = min(daily_averages, key=daily_averages.get)
+
+        # Format as weekday name
+        from datetime import datetime as dt
+        date_obj = dt.fromisoformat(cheapest_date)
+        return date_obj.strftime("%A, %b %d")  # e.g., "Monday, Oct 23"
+
+    @property
+    def extra_state_attributes(self):
+        """Return additional attributes."""
+        if not self.coordinator.data:
+            return {}
+
+        predictions_7d = self.coordinator.data.get("predictions_7d", [])
+        if not predictions_7d:
+            return {}
+
+        # Calculate daily averages
+        daily_data = {}
+        for pred in predictions_7d:
+            date = pred["timestamp"][:10]
+            if date not in daily_data:
+                daily_data[date] = []
+            daily_data[date].append(pred["predicted_price"])
+
+        daily_averages = {date: sum(prices) / len(prices) for date, prices in daily_data.items()}
+        if not daily_averages:
+            return {}
+
+        cheapest_date = min(daily_averages, key=daily_averages.get)
+        cheapest_price = daily_averages[cheapest_date]
+
+        # Days until cheapest
+        from datetime import datetime as dt
+        today = dt.now().date()
+        cheapest_date_obj = dt.fromisoformat(cheapest_date).date()
+        days_until = (cheapest_date_obj - today).days
+
+        return {
+            "date": cheapest_date,
+            "average_price": round(cheapest_price / 1000, 5),
+            "days_until": days_until,
+            "is_today": days_until == 0,
+            "is_tomorrow": days_until == 1,
+            "all_daily_averages": {
+                date: round(avg / 1000, 5)
+                for date, avg in sorted(daily_averages.items())
+            }
+        }
+
+
+class MostExpensiveDayNext7DSensor(ElectricityPriceSensorBase):
+    """Sensor showing the most expensive day in next 7 days."""
+
+    _attr_name = "Most Expensive Day (7d)"
+    _attr_icon = "mdi:calendar-alert"
+
+    @property
+    def unique_id(self):
+        """Return unique ID."""
+        return f"{self.api.region_id}_expensive_day_7d"
+
+    @property
+    def native_value(self):
+        """Return the date of the most expensive day."""
+        if not self.coordinator.data:
+            return None
+
+        predictions_7d = self.coordinator.data.get("predictions_7d", [])
+        if not predictions_7d:
+            return None
+
+        # Calculate daily averages
+        daily_data = {}
+        for pred in predictions_7d:
+            date = pred["timestamp"][:10]
+            if date not in daily_data:
+                daily_data[date] = []
+            daily_data[date].append(pred["predicted_price"])
+
+        daily_averages = {date: sum(prices) / len(prices) for date, prices in daily_data.items()}
+        if not daily_averages:
+            return None
+
+        expensive_date = max(daily_averages, key=daily_averages.get)
+
+        from datetime import datetime as dt
+        date_obj = dt.fromisoformat(expensive_date)
+        return date_obj.strftime("%A, %b %d")
+
+    @property
+    def extra_state_attributes(self):
+        """Return additional attributes."""
+        if not self.coordinator.data:
+            return {}
+
+        predictions_7d = self.coordinator.data.get("predictions_7d", [])
+        if not predictions_7d:
+            return {}
+
+        daily_data = {}
+        for pred in predictions_7d:
+            date = pred["timestamp"][:10]
+            if date not in daily_data:
+                daily_data[date] = []
+            daily_data[date].append(pred["predicted_price"])
+
+        daily_averages = {date: sum(prices) / len(prices) for date, prices in daily_data.items()}
+        if not daily_averages:
+            return {}
+
+        expensive_date = max(daily_averages, key=daily_averages.get)
+        expensive_price = daily_averages[expensive_date]
+
+        from datetime import datetime as dt
+        today = dt.now().date()
+        expensive_date_obj = dt.fromisoformat(expensive_date).date()
+        days_until = (expensive_date_obj - today).days
+
+        return {
+            "date": expensive_date,
+            "average_price": round(expensive_price / 1000, 5),
+            "days_until": days_until,
+            "is_today": days_until == 0,
+            "is_tomorrow": days_until == 1,
+        }
+
+
+class TomorrowVsTodaySensor(ElectricityPriceSensorBase):
+    """Sensor comparing tomorrow's average price vs today."""
+
+    _attr_name = "Tomorrow vs Today"
+    _attr_icon = "mdi:compare-horizontal"
+    _attr_native_unit_of_measurement = "%"
+
+    @property
+    def unique_id(self):
+        """Return unique ID."""
+        return f"{self.api.region_id}_tomorrow_vs_today"
+
+    @property
+    def native_value(self):
+        """Return percentage difference (positive = tomorrow more expensive)."""
+        if not self.coordinator.data:
+            return None
+
+        predictions_24h = self.coordinator.data.get("predictions_24h", [])
+        predictions_7d = self.coordinator.data.get("predictions_7d", [])
+
+        if not predictions_24h or not predictions_7d:
+            return None
+
+        from datetime import datetime as dt
+        today = dt.now().date()
+        tomorrow = (dt.now() + timedelta(days=1)).date()
+
+        # Calculate today's average
+        today_prices = [
+            p["predicted_price"] for p in predictions_24h
+            if dt.fromisoformat(p["timestamp"].replace("Z", "+00:00")).date() == today
+        ]
+
+        # Calculate tomorrow's average
+        tomorrow_prices = [
+            p["predicted_price"] for p in predictions_7d
+            if dt.fromisoformat(p["timestamp"].replace("Z", "+00:00")).date() == tomorrow
+        ]
+
+        if not today_prices or not tomorrow_prices:
+            return None
+
+        today_avg = sum(today_prices) / len(today_prices)
+        tomorrow_avg = sum(tomorrow_prices) / len(tomorrow_prices)
+
+        # Percentage difference
+        diff_percent = ((tomorrow_avg - today_avg) / today_avg) * 100
+
+        return round(diff_percent, 1)
+
+    @property
+    def extra_state_attributes(self):
+        """Return additional attributes."""
+        if not self.coordinator.data:
+            return {}
+
+        predictions_24h = self.coordinator.data.get("predictions_24h", [])
+        predictions_7d = self.coordinator.data.get("predictions_7d", [])
+
+        if not predictions_24h or not predictions_7d:
+            return {}
+
+        from datetime import datetime as dt
+        today = dt.now().date()
+        tomorrow = (dt.now() + timedelta(days=1)).date()
+
+        today_prices = [
+            p["predicted_price"] for p in predictions_24h
+            if dt.fromisoformat(p["timestamp"].replace("Z", "+00:00")).date() == today
+        ]
+
+        tomorrow_prices = [
+            p["predicted_price"] for p in predictions_7d
+            if dt.fromisoformat(p["timestamp"].replace("Z", "+00:00")).date() == tomorrow
+        ]
+
+        if not today_prices or not tomorrow_prices:
+            return {}
+
+        today_avg = sum(today_prices) / len(today_prices)
+        tomorrow_avg = sum(tomorrow_prices) / len(tomorrow_prices)
+
+        return {
+            "today_average": round(today_avg / 1000, 5),
+            "tomorrow_average": round(tomorrow_avg / 1000, 5),
+            "tomorrow_cheaper": tomorrow_avg < today_avg,
+            "recommendation": "Wait for tomorrow" if tomorrow_avg < today_avg * 0.9 else "Use energy today" if today_avg < tomorrow_avg * 0.9 else "Similar prices",
+        }
+
+
+class WeeklyTrendSensor(ElectricityPriceSensorBase):
+    """Sensor showing price trend over the next 7 days."""
+
+    _attr_name = "Weekly Price Trend"
+    _attr_icon = "mdi:chart-line-variant"
+
+    @property
+    def unique_id(self):
+        """Return unique ID."""
+        return f"{self.api.region_id}_weekly_trend"
+
+    @property
+    def native_value(self):
+        """Return trend direction."""
+        if not self.coordinator.data:
+            return None
+
+        predictions_7d = self.coordinator.data.get("predictions_7d", [])
+        if not predictions_7d or len(predictions_7d) < 48:
+            return None
+
+        # Compare first 24h vs last 24h
+        first_day_avg = sum(p["predicted_price"] for p in predictions_7d[:24]) / 24
+        last_day_avg = sum(p["predicted_price"] for p in predictions_7d[-24:]) / 24
+
+        diff_percent = ((last_day_avg - first_day_avg) / first_day_avg) * 100
+
+        if diff_percent > 10:
+            return "Rising ↗"
+        elif diff_percent < -10:
+            return "Falling ↘"
+        else:
+            return "Stable →"
+
+    @property
+    def extra_state_attributes(self):
+        """Return additional attributes."""
+        if not self.coordinator.data:
+            return {}
+
+        predictions_7d = self.coordinator.data.get("predictions_7d", [])
+        if not predictions_7d or len(predictions_7d) < 48:
+            return {}
+
+        first_day_avg = sum(p["predicted_price"] for p in predictions_7d[:24]) / 24
+        last_day_avg = sum(p["predicted_price"] for p in predictions_7d[-24:]) / 24
+        week_avg = sum(p["predicted_price"] for p in predictions_7d) / len(predictions_7d)
+
+        diff_percent = ((last_day_avg - first_day_avg) / first_day_avg) * 100
+
+        return {
+            "first_day_average": round(first_day_avg / 1000, 5),
+            "last_day_average": round(last_day_avg / 1000, 5),
+            "week_average": round(week_avg / 1000, 5),
+            "change_percent": round(diff_percent, 1),
+            "prices_increasing": diff_percent > 5,
+            "prices_decreasing": diff_percent < -5,
         }

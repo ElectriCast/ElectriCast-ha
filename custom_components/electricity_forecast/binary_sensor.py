@@ -1,7 +1,7 @@
 """Binary sensor platform for Electricity Price Forecast."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.components.binary_sensor import (
@@ -31,6 +31,7 @@ async def async_setup_entry(
         IsInCheapest3HoursBinarySensor(coordinator, api),
         IsInCheapest6HoursBinarySensor(coordinator, api),
         IsBelowAverageBinarySensor(coordinator, api),
+        TomorrowCheaperBinarySensor(coordinator, api),
     ]
 
     async_add_entities(binary_sensors)
@@ -410,3 +411,90 @@ class IsBelowAverageBinarySensor(ElectricityPriceBinarySensorBase):
                 "difference_percent": round(((current_price - avg_price) / avg_price) * 100, 1),
             }
         return {}
+
+
+class TomorrowCheaperBinarySensor(ElectricityPriceBinarySensorBase):
+    """Binary sensor for whether tomorrow is cheaper than today (>10% difference)."""
+
+    _attr_name = "Tomorrow Is Cheaper"
+    _attr_icon = "mdi:calendar-check"
+
+    @property
+    def unique_id(self):
+        """Return unique ID."""
+        return f"{self.api.region_id}_tomorrow_is_cheaper"
+
+    @property
+    def is_on(self):
+        """Return true if tomorrow is significantly cheaper (>10%)."""
+        if not self.coordinator.data:
+            return False
+
+        predictions_24h = self.coordinator.data.get("predictions_24h", [])
+        predictions_7d = self.coordinator.data.get("predictions_7d", [])
+
+        if not predictions_24h or not predictions_7d:
+            return False
+
+        today = datetime.now().date()
+        tomorrow = (datetime.now() + timedelta(days=1)).date()
+
+        # Calculate today's average
+        today_prices = [
+            p["predicted_price"] for p in predictions_24h
+            if datetime.fromisoformat(p["timestamp"].replace("Z", "+00:00")).date() == today
+        ]
+
+        # Calculate tomorrow's average
+        tomorrow_prices = [
+            p["predicted_price"] for p in predictions_7d
+            if datetime.fromisoformat(p["timestamp"].replace("Z", "+00:00")).date() == tomorrow
+        ]
+
+        if not today_prices or not tomorrow_prices:
+            return False
+
+        today_avg = sum(today_prices) / len(today_prices)
+        tomorrow_avg = sum(tomorrow_prices) / len(tomorrow_prices)
+
+        # Tomorrow is cheaper by at least 10%
+        return tomorrow_avg < today_avg * 0.9
+
+    @property
+    def extra_state_attributes(self):
+        """Return additional attributes."""
+        if not self.coordinator.data:
+            return {}
+
+        predictions_24h = self.coordinator.data.get("predictions_24h", [])
+        predictions_7d = self.coordinator.data.get("predictions_7d", [])
+
+        if not predictions_24h or not predictions_7d:
+            return {}
+
+        today = datetime.now().date()
+        tomorrow = (datetime.now() + timedelta(days=1)).date()
+
+        today_prices = [
+            p["predicted_price"] for p in predictions_24h
+            if datetime.fromisoformat(p["timestamp"].replace("Z", "+00:00")).date() == today
+        ]
+
+        tomorrow_prices = [
+            p["predicted_price"] for p in predictions_7d
+            if datetime.fromisoformat(p["timestamp"].replace("Z", "+00:00")).date() == tomorrow
+        ]
+
+        if not today_prices or not tomorrow_prices:
+            return {}
+
+        today_avg = sum(today_prices) / len(today_prices)
+        tomorrow_avg = sum(tomorrow_prices) / len(tomorrow_prices)
+        savings_percent = ((today_avg - tomorrow_avg) / today_avg) * 100
+
+        return {
+            "today_average": round(today_avg / 1000, 5),
+            "tomorrow_average": round(tomorrow_avg / 1000, 5),
+            "savings_percent": round(savings_percent, 1),
+            "recommendation": "Delay energy-intensive tasks until tomorrow" if savings_percent > 10 else "No significant savings",
+        }
