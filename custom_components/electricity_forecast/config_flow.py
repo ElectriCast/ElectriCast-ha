@@ -34,19 +34,20 @@ async def validate_api(hass: HomeAssistant, api_url: str, region_id: str) -> dic
 
     try:
         # Test health endpoint
-        async with session.get(f"{api_url}/health", timeout=10) as response:
+        timeout = aiohttp.ClientTimeout(total=30)
+        async with session.get(f"{api_url}/health", timeout=timeout) as response:
             if response.status != 200:
                 raise Exception("API health check failed")
 
         # Test predictions endpoint
         async with session.get(
-            f"{api_url}/api/predictions/{region_id}/next-24h", timeout=10
+            f"{api_url}/api/predictions/{region_id}/next-24h", timeout=timeout
         ) as response:
             if response.status != 200:
                 raise Exception(f"Cannot fetch predictions for region {region_id}")
             data = await response.json()
-            if not data:
-                raise Exception("No prediction data available")
+            if not data or not isinstance(data, list):
+                raise Exception("No prediction data available or invalid format")
 
         return {"title": f"Electricity Forecast ({region_id})"}
 

@@ -21,12 +21,13 @@ class ElectricityForecastAPI:
         url = f"{self.api_url}/api/historical/{self.region_id}/combined"
         params = {"hours": 1}
 
-        async with self.session.get(url, params=params) as response:
+        async with self.session.get(url, params=params, timeout=30) as response:
             response.raise_for_status()
             data = await response.json()
 
-            if data["historical_data"]:
-                latest = data["historical_data"][-1]
+            # Backend returns data in "data" key, not "historical_data"
+            if data.get("data") and len(data["data"]) > 0:
+                latest = data["data"][-1]
                 return {
                     "price": latest["price"],
                     "timestamp": latest["timestamp"],
@@ -37,7 +38,7 @@ class ElectricityForecastAPI:
         """Get price predictions."""
         url = f"{self.api_url}/api/predictions/{self.region_id}/next-24h" if hours <= 24 else f"{self.api_url}/api/predictions/{self.region_id}/next-7d"
 
-        async with self.session.get(url) as response:
+        async with self.session.get(url, timeout=30) as response:
             response.raise_for_status()
             return await response.json()
 
@@ -46,9 +47,11 @@ class ElectricityForecastAPI:
         url = f"{self.api_url}/api/historical/{self.region_id}/combined"
         params = {"hours": hours}
 
-        async with self.session.get(url, params=params) as response:
+        async with self.session.get(url, params=params, timeout=30) as response:
             response.raise_for_status()
-            return await response.json()
+            result = await response.json()
+            # Return just the data array for consistency
+            return result.get("data", [])
 
     async def async_get_all_data(self) -> dict[str, Any]:
         """Fetch all relevant data."""
