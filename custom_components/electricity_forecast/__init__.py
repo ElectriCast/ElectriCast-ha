@@ -15,7 +15,7 @@ from .api import ElectricityForecastAPI
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR]
 
 SCAN_INTERVAL = timedelta(minutes=15)  # Update every 15 minutes
 
