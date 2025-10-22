@@ -12,6 +12,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 
@@ -80,7 +81,7 @@ class IsCheapNowBinarySensor(ElectricityPriceBinarySensorBase):
         if not current or not predictions:
             return False
 
-        now = datetime.now()
+        now = dt_util.now()
         today_end = now.replace(hour=23, minute=59, second=59)
         today_prices = [
             p["predicted_price"] for p in predictions
@@ -109,7 +110,7 @@ class IsCheapNowBinarySensor(ElectricityPriceBinarySensorBase):
         if not current or not predictions:
             return {}
 
-        now = datetime.now()
+        now = dt_util.now()
         today_end = now.replace(hour=23, minute=59, second=59)
         today_prices = [
             p["predicted_price"] for p in predictions
@@ -154,7 +155,7 @@ class IsExpensiveNowBinarySensor(ElectricityPriceBinarySensorBase):
         if not current or not predictions:
             return False
 
-        now = datetime.now()
+        now = dt_util.now()
         today_end = now.replace(hour=23, minute=59, second=59)
         today_prices = [
             p["predicted_price"] for p in predictions
@@ -183,7 +184,7 @@ class IsExpensiveNowBinarySensor(ElectricityPriceBinarySensorBase):
         if not current or not predictions:
             return {}
 
-        now = datetime.now()
+        now = dt_util.now()
         today_end = now.replace(hour=23, minute=59, second=59)
         today_prices = [
             p["predicted_price"] for p in predictions
@@ -228,7 +229,7 @@ class IsInCheapest3HoursBinarySensor(ElectricityPriceBinarySensorBase):
         if not current or not predictions:
             return False
 
-        now = datetime.now()
+        now = dt_util.now()
         today_end = now.replace(hour=23, minute=59, second=59)
         today_prices = [
             p["predicted_price"] for p in predictions
@@ -255,7 +256,7 @@ class IsInCheapest3HoursBinarySensor(ElectricityPriceBinarySensorBase):
         if not current or not predictions:
             return {}
 
-        now = datetime.now()
+        now = dt_util.now()
         today_end = now.replace(hour=23, minute=59, second=59)
         today_prices = [
             p["predicted_price"] for p in predictions
@@ -297,7 +298,7 @@ class IsInCheapest6HoursBinarySensor(ElectricityPriceBinarySensorBase):
         if not current or not predictions:
             return False
 
-        now = datetime.now()
+        now = dt_util.now()
         today_end = now.replace(hour=23, minute=59, second=59)
         today_prices = [
             p["predicted_price"] for p in predictions
@@ -324,7 +325,7 @@ class IsInCheapest6HoursBinarySensor(ElectricityPriceBinarySensorBase):
         if not current or not predictions:
             return {}
 
-        now = datetime.now()
+        now = dt_util.now()
         today_end = now.replace(hour=23, minute=59, second=59)
         today_prices = [
             p["predicted_price"] for p in predictions
@@ -366,7 +367,7 @@ class IsBelowAverageBinarySensor(ElectricityPriceBinarySensorBase):
         if not current or not predictions:
             return False
 
-        now = datetime.now()
+        now = dt_util.now()
         today_end = now.replace(hour=23, minute=59, second=59)
         today_prices = [
             p["predicted_price"] for p in predictions
@@ -393,7 +394,7 @@ class IsBelowAverageBinarySensor(ElectricityPriceBinarySensorBase):
         if not current or not predictions:
             return {}
 
-        now = datetime.now()
+        now = dt_util.now()
         today_end = now.replace(hour=23, minute=59, second=59)
         today_prices = [
             p["predicted_price"] for p in predictions
@@ -436,8 +437,8 @@ class TomorrowCheaperBinarySensor(ElectricityPriceBinarySensorBase):
         if not predictions_24h or not predictions_7d:
             return False
 
-        today = datetime.now().date()
-        tomorrow = (datetime.now() + timedelta(days=1)).date()
+        today = dt_util.now().date()
+        tomorrow = (dt_util.now() + timedelta(days=1)).date()
 
         # Calculate today's average
         today_prices = [
@@ -472,8 +473,8 @@ class TomorrowCheaperBinarySensor(ElectricityPriceBinarySensorBase):
         if not predictions_24h or not predictions_7d:
             return {}
 
-        today = datetime.now().date()
-        tomorrow = (datetime.now() + timedelta(days=1)).date()
+        today = dt_util.now().date()
+        tomorrow = (dt_util.now() + timedelta(days=1)).date()
 
         today_prices = [
             p["predicted_price"] for p in predictions_24h

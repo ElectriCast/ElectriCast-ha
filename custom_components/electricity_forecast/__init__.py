@@ -17,7 +17,7 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR]
 
-SCAN_INTERVAL = timedelta(minutes=15)  # Update every 15 minutes
+SCAN_INTERVAL = timedelta(minutes=10)  # Update every 10 minutes
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -31,8 +31,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async def async_update_data():
         """Fetch data from API."""
         try:
-            return await api.async_get_all_data()
+            _LOGGER.debug("Fetching data from API: %s", api_url)
+            data = await api.async_get_all_data()
+            _LOGGER.debug("Successfully fetched data for region %s", region_id)
+            return data
         except Exception as err:
+            _LOGGER.error("Error communicating with API %s: %s", api_url, err)
             raise UpdateFailed(f"Error communicating with API: {err}")
 
     coordinator = DataUpdateCoordinator(

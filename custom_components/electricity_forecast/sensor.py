@@ -14,6 +14,7 @@ from homeassistant.const import CURRENCY_EURO
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .const import (
     ATTR_AVERAGE_TODAY,
@@ -121,7 +122,7 @@ class CurrentPriceSensor(ElectricityPriceSensorBase):
 
             # Add price ranking and comparison
             if predictions:
-                now = datetime.now()
+                now = dt_util.now()
                 today_end = now.replace(hour=23, minute=59, second=59)
                 today_prices = [
                     p["predicted_price"] for p in predictions
@@ -222,7 +223,7 @@ class AveragePriceTodaySensor(ElectricityPriceSensorBase):
             return None
 
         # Filter today's predictions
-        now = datetime.now()
+        now = dt_util.now()
         today_end = now.replace(hour=23, minute=59, second=59)
 
         today_prices = [
@@ -244,7 +245,7 @@ class AveragePriceTodaySensor(ElectricityPriceSensorBase):
         if not predictions:
             return {}
 
-        now = datetime.now()
+        now = dt_util.now()
         today_end = now.replace(hour=23, minute=59, second=59)
 
         today_prices = [
@@ -301,7 +302,7 @@ class CheapestHourTodaySensor(ElectricityPriceSensorBase):
 
         if cheapest:
             # Calculate hours until cheapest
-            now = datetime.now()
+            now = dt_util.now()
             cheapest_time = datetime.fromisoformat(cheapest[0]["timestamp"].replace("Z", "+00:00"))
             hours_until = max(0, int((cheapest_time - now).total_seconds() / 3600))
 
@@ -358,7 +359,7 @@ class ExpensiveHourTodaySensor(ElectricityPriceSensorBase):
 
         if expensive:
             # Calculate hours until most expensive
-            now = datetime.now()
+            now = dt_util.now()
             expensive_time = datetime.fromisoformat(expensive[0]["timestamp"].replace("Z", "+00:00"))
             hours_until = max(0, int((expensive_time - now).total_seconds() / 3600))
 
@@ -659,8 +660,8 @@ class CheapestDayNext7DSensor(ElectricityPriceSensorBase):
         cheapest_date = min(daily_averages, key=daily_averages.get)
 
         # Format as weekday name
-        from datetime import datetime as dt
-        date_obj = dt.fromisoformat(cheapest_date)
+        # from datetime import datetime as dt
+        date_obj = datetime.fromisoformat(cheapest_date)
         return date_obj.strftime("%A, %b %d")  # e.g., "Monday, Oct 23"
 
     @property
@@ -689,9 +690,9 @@ class CheapestDayNext7DSensor(ElectricityPriceSensorBase):
         cheapest_price = daily_averages[cheapest_date]
 
         # Days until cheapest
-        from datetime import datetime as dt
-        today = dt.now().date()
-        cheapest_date_obj = dt.fromisoformat(cheapest_date).date()
+        # from datetime import datetime as dt
+        today = dt_util.now().date()
+        cheapest_date_obj = datetime.fromisoformat(cheapest_date).date()
         days_until = (cheapest_date_obj - today).days
 
         return {
@@ -742,8 +743,8 @@ class MostExpensiveDayNext7DSensor(ElectricityPriceSensorBase):
 
         expensive_date = max(daily_averages, key=daily_averages.get)
 
-        from datetime import datetime as dt
-        date_obj = dt.fromisoformat(expensive_date)
+        # from datetime import datetime as dt
+        date_obj = datetime.fromisoformat(expensive_date)
         return date_obj.strftime("%A, %b %d")
 
     @property
@@ -770,9 +771,9 @@ class MostExpensiveDayNext7DSensor(ElectricityPriceSensorBase):
         expensive_date = max(daily_averages, key=daily_averages.get)
         expensive_price = daily_averages[expensive_date]
 
-        from datetime import datetime as dt
-        today = dt.now().date()
-        expensive_date_obj = dt.fromisoformat(expensive_date).date()
+        # from datetime import datetime as dt
+        today = dt_util.now().date()
+        expensive_date_obj = datetime.fromisoformat(expensive_date).date()
         days_until = (expensive_date_obj - today).days
 
         return {
@@ -808,20 +809,20 @@ class TomorrowVsTodaySensor(ElectricityPriceSensorBase):
         if not predictions_24h or not predictions_7d:
             return None
 
-        from datetime import datetime as dt
-        today = dt.now().date()
-        tomorrow = (dt.now() + timedelta(days=1)).date()
+        # from datetime import datetime as dt
+        today = dt_util.now().date()
+        tomorrow = (dt_util.now() + timedelta(days=1)).date()
 
         # Calculate today's average
         today_prices = [
             p["predicted_price"] for p in predictions_24h
-            if dt.fromisoformat(p["timestamp"].replace("Z", "+00:00")).date() == today
+            if datetime.fromisoformat(p["timestamp"].replace("Z", "+00:00")).date() == today
         ]
 
         # Calculate tomorrow's average
         tomorrow_prices = [
             p["predicted_price"] for p in predictions_7d
-            if dt.fromisoformat(p["timestamp"].replace("Z", "+00:00")).date() == tomorrow
+            if datetime.fromisoformat(p["timestamp"].replace("Z", "+00:00")).date() == tomorrow
         ]
 
         if not today_prices or not tomorrow_prices:
@@ -847,18 +848,18 @@ class TomorrowVsTodaySensor(ElectricityPriceSensorBase):
         if not predictions_24h or not predictions_7d:
             return {}
 
-        from datetime import datetime as dt
-        today = dt.now().date()
-        tomorrow = (dt.now() + timedelta(days=1)).date()
+        # from datetime import datetime as dt
+        today = dt_util.now().date()
+        tomorrow = (dt_util.now() + timedelta(days=1)).date()
 
         today_prices = [
             p["predicted_price"] for p in predictions_24h
-            if dt.fromisoformat(p["timestamp"].replace("Z", "+00:00")).date() == today
+            if datetime.fromisoformat(p["timestamp"].replace("Z", "+00:00")).date() == today
         ]
 
         tomorrow_prices = [
             p["predicted_price"] for p in predictions_7d
-            if dt.fromisoformat(p["timestamp"].replace("Z", "+00:00")).date() == tomorrow
+            if datetime.fromisoformat(p["timestamp"].replace("Z", "+00:00")).date() == tomorrow
         ]
 
         if not today_prices or not tomorrow_prices:
